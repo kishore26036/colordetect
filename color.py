@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 from sklearn.cluster import KMeans
 import webcolors
+from webcolors import CSS3_NAMES_TO_HEX
 
 # ---------- COLOR DETECTION ----------
 def get_dominant_colors(image, k=5):
@@ -23,13 +24,12 @@ def get_dominant_colors(image, k=5):
 def closest_color(rgb):
     min_dist = float('inf')
     closest = None
-    for name, hex_code in webcolors.CSS3_NAMES_TO_HEX.items():
+    for name, hex_code in CSS3_NAMES_TO_HEX.items():
         r, g, b = webcolors.hex_to_rgb(hex_code)
         dist = (r - rgb[0])**2 + (g - rgb[1])**2 + (b - rgb[2])**2
         if dist < min_dist:
             min_dist, closest = dist, name
     return closest
-
 
 # ---------- STREAMLIT CONFIG ----------
 st.set_page_config(page_title="Color Detective", page_icon="🎨", layout="centered")
