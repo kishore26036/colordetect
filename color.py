@@ -8,12 +8,13 @@ import webcolors
 # Helper functions
 # -----------------------------
 def closest_color(requested_color):
-    """Find the closest CSS3 color name for an RGB value."""
+    """Finds the closest HTML color name for an RGB value."""
     try:
-        color_map = getattr(webcolors, "CSS3_NAMES_TO_HEX", getattr(webcolors, "HTML4_NAMES_TO_HEX", None))
-        if not color_map:
-            raise AttributeError
-    except AttributeError:
+        # Use available color maps (works with any webcolors version)
+        color_map = getattr(webcolors, "CSS3_NAMES_TO_HEX", None) \
+                 or getattr(webcolors, "HTML4_NAMES_TO_HEX", None) \
+                 or getattr(webcolors, "HTML3_NAMES_TO_HEX", None)
+    except Exception:
         return "Unknown"
 
     min_dist = float("inf")
@@ -32,7 +33,7 @@ def get_dominant_colors(image, k=5):
     img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     img_data = img_rgb.reshape((-1, 3))
 
-    kmeans = KMeans(n_clusters=k, random_state=42)
+    kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
     kmeans.fit(img_data)
 
     colors = kmeans.cluster_centers_.astype(int)
@@ -169,9 +170,14 @@ if uploaded_file:
         rgb = tuple(color)
         hex_code = '#%02x%02x%02x' % rgb
         try:
+            # Try to get exact name first
             name = webcolors.rgb_to_name(rgb)
         except ValueError:
+            # Fall back to nearest color name
             name = closest_color(rgb)
+
+        # Capitalize name properly
+        name = name.replace("-", " ").title() if name else "Unknown"
 
         with cols[i]:
             st.markdown(
@@ -179,7 +185,7 @@ if uploaded_file:
                 <div class="color-card">
                     <div class="color-box" style="background-color:{hex_code};"></div>
                     <div class="color-info">
-                        <b>Name:</b> {name.title()}<br>
+                        <b>Name:</b> {name}<br>
                         <b>HEX:</b> {hex_code}<br>
                         <b>RGB:</b> {rgb}<br>
                         <b>Dominance:</b> {perc:.2f}%
