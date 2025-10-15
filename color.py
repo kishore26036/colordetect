@@ -1,20 +1,28 @@
 import streamlit as st
-import cv2
 import numpy as np
+import cv2
 from sklearn.cluster import KMeans
 import webcolors
 
-# -----------------------------
-# Helper functions
-# -----------------------------
+# ---------- SAFE COLOR NAME FUNCTION ----------
 def closest_color(requested_color):
-    """Finds the closest HTML color name for an RGB value."""
+    """Finds the closest HTML color name for an RGB value, safe across versions."""
     try:
-        # Use available color maps (works with any webcolors version)
-        color_map = getattr(webcolors, "CSS3_NAMES_TO_HEX", None) \
-                 or getattr(webcolors, "HTML4_NAMES_TO_HEX", None) \
-                 or getattr(webcolors, "HTML3_NAMES_TO_HEX", None)
+        color_maps = [
+            getattr(webcolors, "CSS3_NAMES_TO_HEX", None),
+            getattr(webcolors, "HTML4_NAMES_TO_HEX", None),
+            getattr(webcolors, "HTML5_NAMES_TO_HEX", None),
+        ]
+        # Fallback for internal definitions (latest webcolors)
+        if not any(color_maps):
+            from webcolors._definitions import _CSS3_NAMES_TO_HEX as internal_map
+            color_map = internal_map
+        else:
+            color_map = next((m for m in color_maps if m), None)
     except Exception:
+        return "Unknown"
+
+    if not color_map:
         return "Unknown"
 
     min_dist = float("inf")
@@ -27,182 +35,102 @@ def closest_color(requested_color):
             closest_name = name
     return closest_name
 
-
+# ---------- COLOR DETECTION ----------
 def get_dominant_colors(image, k=5):
-    """Extract k dominant colors using KMeans clustering."""
-    img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    img_data = img_rgb.reshape((-1, 3))
-
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    image = cv2.resize(image, (200, 200))
+    pixels = image.reshape((-1, 3))
     kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-    kmeans.fit(img_data)
-
-    colors = kmeans.cluster_centers_.astype(int)
-    labels = np.bincount(kmeans.labels_)
-    percentages = (labels / len(kmeans.labels_)) * 100
-
-    sorted_idx = np.argsort(percentages)[::-1]
+    kmeans.fit(pixels)
+    colors = np.round(kmeans.cluster_centers_).astype(int)
+    counts = np.bincount(kmeans.labels_)
+    percentages = counts / counts.sum() * 100
+    sorted_idx = np.argsort(-percentages)
     colors = colors[sorted_idx]
     percentages = percentages[sorted_idx]
-
     return colors, percentages
 
+# ---------- STREAMLIT PAGE CONFIG ----------
+st.set_page_config(page_title="Color Detective 🎨", page_icon="🎨", layout="wide")
 
-# -----------------------------
-# Streamlit UI
-# -----------------------------
-st.set_page_config(page_title="🎨 Color Detective", page_icon="🎨", layout="wide")
+# ---------- CUSTOM CSS ----------
+st.markdown("""
+<style>
+body {
+    background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+    color: white;
+    font-family: 'Poppins', sans-serif;
+}
+h1 {
+    text-align: center;
+    color: #fff;
+    text-shadow: 2px 2px 6px rgba(255,255,255,0.3);
+}
+.stApp {
+    background: linear-gradient(135deg, #1f1c2c, #928dab);
+}
+.color-card {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 15px;
+    padding: 15px;
+    margin-bottom: 15px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+footer {
+    text-align: center;
+    margin-top: 30px;
+    font-size: 14px;
+    color: #bbb;
+}
+.upload-btn {
+    background-color: #1f6feb !important;
+    color: white !important;
+    border-radius: 10px !important;
+    padding: 8px 20px !important;
+    font-weight: 600 !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# Gradient animated background + clean UI styling
-st.markdown(
-    """
-    <style>
-    /* Gradient animation */
-    .stApp {
-        background: linear-gradient(120deg, #1a2a6c, #b21f1f, #fdbb2d, #283c86);
-        background-size: 400% 400%;
-        animation: gradientFlow 15s ease infinite;
-        color: #fff;
-    }
-    @keyframes gradientFlow {
-        0% {background-position: 0% 50%;}
-        50% {background-position: 100% 50%;}
-        100% {background-position: 0% 50%;}
-    }
+# ---------- APP TITLE ----------
+st.title("🎨 Color Detective")
+st.write("Upload an image to analyze its dominant colors in style! 🌈")
 
-    /* Title and description */
-    .title {
-        text-align: center;
-        font-size: 3em;
-        font-weight: 800;
-        letter-spacing: 1px;
-        margin-bottom: 0.2em;
-        background: -webkit-linear-gradient(45deg, #00f5d4, #f15bb5);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-    .desc {
-        text-align: center;
-        color: #f0f0f0;
-        font-size: 1.1em;
-        margin-bottom: 2em;
-    }
-
-    /* File uploader styling */
-    .stFileUploader label {
-        background: rgba(0,0,0,0.6);
-        color: #fff !important;
-        border-radius: 10px;
-        padding: 10px 20px;
-        font-weight: 600;
-        border: 2px solid rgba(255,255,255,0.5);
-    }
-    .stFileUploader:hover label {
-        background: rgba(255,255,255,0.2);
-        cursor: pointer;
-        transition: 0.3s;
-    }
-
-    /* Color card design */
-    .color-card {
-        background: rgba(255,255,255,0.1);
-        backdrop-filter: blur(10px);
-        border-radius: 16px;
-        padding: 20px;
-        margin: 15px;
-        box-shadow: 0 4px 25px rgba(0,0,0,0.3);
-        text-align: center;
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-    .color-card:hover {
-        transform: scale(1.03);
-        box-shadow: 0 8px 30px rgba(255,255,255,0.25);
-    }
-    .color-box {
-        width: 100%;
-        height: 100px;
-        border-radius: 10px;
-        border: 2px solid rgba(255,255,255,0.5);
-        margin-bottom: 15px;
-    }
-    .color-info {
-        font-size: 1.1em;
-        color: #fff;
-        line-height: 1.8em;
-    }
-
-    footer {
-        position: fixed;
-        bottom: 0;
-        width: 100%;
-        text-align: center;
-        color: #fff;
-        background: rgba(0, 0, 0, 0.4);
-        backdrop-filter: blur(10px);
-        padding: 8px 0;
-        font-size: 1em;
-        border-top: 1px solid rgba(255,255,255,0.2);
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# App header
-st.markdown("<div class='title'>🎨 Color Detective</div>", unsafe_allow_html=True)
-st.markdown("<div class='desc'>Upload an image and explore its dominant colors in a beautiful format 🌈</div>", unsafe_allow_html=True)
-
-# Upload section
-uploaded_file = st.file_uploader("📸 Upload your image below", type=["png", "jpg", "jpeg"])
+# ---------- FILE UPLOADER ----------
+uploaded_file = st.file_uploader("Choose an image", type=["png","jpg","jpeg"], label_visibility="collapsed")
 
 if uploaded_file:
-    # Read and show image
+    # Read image
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-    st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), caption="Uploaded Image", use_container_width=True)
+    st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), caption="📸 Uploaded Image", use_container_width=True)
 
-    with st.spinner("🎨 Detecting colors... Please wait!"):
+    # Detect colors
+    with st.spinner("🔍 Detecting dominant colors..."):
         colors, percentages = get_dominant_colors(img, k=5)
 
-    st.markdown("<h3 style='text-align:center;margin-top:30px;'>Top Dominant Colors</h3>", unsafe_allow_html=True)
-
-    cols = st.columns(len(colors))
-    for i, (color, perc) in enumerate(zip(colors, percentages)):
+    st.subheader("🎨 Detected Color Palette")
+    for i, color in enumerate(colors):
         rgb = tuple(color)
         hex_code = '#%02x%02x%02x' % rgb
         try:
-            # Try to get exact name first
             name = webcolors.rgb_to_name(rgb)
         except ValueError:
-            # Fall back to nearest color name
             name = closest_color(rgb)
 
-        # Capitalize name properly
-        name = name.replace("-", " ").title() if name else "Unknown"
-
-        with cols[i]:
-            st.markdown(
-                f"""
-                <div class="color-card">
-                    <div class="color-box" style="background-color:{hex_code};"></div>
-                    <div class="color-info">
-                        <b>Name:</b> {name}<br>
-                        <b>HEX:</b> {hex_code}<br>
-                        <b>RGB:</b> {rgb}<br>
-                        <b>Dominance:</b> {perc:.2f}%
-                    </div>
+        st.markdown(f"""
+        <div class="color-card">
+            <div style="display:flex; align-items:center;">
+                <div style="width:60px; height:60px; background-color:{hex_code}; border-radius:10px; margin-right:15px;"></div>
+                <div>
+                    <b style="font-size:18px; color:#fff;">{name.title()}</b><br>
+                    <span style="color:#ddd;">RGB: {rgb}</span><br>
+                    <span style="color:#ddd;">HEX: {hex_code}</span><br>
+                    <span style="color:#ddd;">Share: {percentages[i]:.2f}%</span>
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-# Footer
-st.markdown(
-    """
-<footer>
-Made with ❤️ by <b style="background: -webkit-linear-gradient(45deg, #00f5d4, #f15bb5);
-             -webkit-background-clip: text;
-             -webkit-text-fill-color: transparent;">Kishore</b> | Powered by Streamlit
-</footer>
-""",
-    unsafe_allow_html=True,
-)
+# ---------- FOOTER ----------
+st.markdown("<footer>Made with ❤️ by Kishore | Powered by Streamlit</footer>", unsafe_allow_html=True)
